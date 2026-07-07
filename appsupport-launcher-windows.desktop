@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Appsupport Launcher Windows
+Exec=/opt/appsupport_launcher_windows/appsupport_launcher_windows %f
+Icon=appsupport-launcher-windows
+Terminal=false
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/vnd.microsoft.portable-executable;
+Categories=Utility;
+NoDisplay=true

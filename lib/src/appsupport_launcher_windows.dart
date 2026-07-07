@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:appsupport_launcher_windows/gui_dialog.dart';
+import 'package:appsupport_launcher_windows/src/gui_dialog.dart';
 
 import 'application_identity.dart';
 import 'constants.dart';
