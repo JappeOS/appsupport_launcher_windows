@@ -16,7 +16,6 @@ _desktopFile="appsupport-launcher-windows.desktop"
 
 build() {
   cd "$srcdir/$pkgname-$_tag"
-  flutter build linux --release
   dart compile exe bin/appsupport_launcher_windows.dart -o $_bundle/$pkgname
 }
 
