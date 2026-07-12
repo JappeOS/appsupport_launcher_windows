@@ -33,7 +33,4 @@ package() {
   # Install desktop entry
   install -Dm644 "$srcdir/$pkgname-$_tag/appsupport-launcher-windows.desktop" \
     "$pkgdir/usr/share/applications/appsupport-launcher-windows.desktop"
-
-  # Set MIME types
-  xdg-mime default "$_desktopFile" application/x-ms-dos-executable application/x-msdownload application/vnd.microsoft.portable-executable
 }
