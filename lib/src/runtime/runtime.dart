@@ -61,6 +61,8 @@ abstract class Runtime {
   final ApplicationRuntimeIdentity identity;
   final Directory path;
 
+  RuntimePathResolver get pathResolver;
+
   const Runtime(this.identity, this.path);
 
   /// Checks if this runtime is compatible with another one, based on the
@@ -74,6 +76,19 @@ abstract class Runtime {
   /// Creates a prefix for this runtime. Make sure to use [isCompatibleWith]
   /// to check whether the same prefix can be used with a different runtime.
   Future<void> createPrefix(Directory prefixPath);
+}
+
+abstract class RuntimePathResolver {
+  String? toolPathToNative(
+    String toolPath,
+    PrefixIdentity prefixIdentity,
+  );
+
+  String? toolPathResolveRelativeToNative(
+    String relativePath,
+    String workingDirectory,
+    PrefixIdentity prefixIdentity,
+  );
 }
 
 /// Launch parameters for a runtime.
@@ -133,6 +148,9 @@ class WineRuntime extends Runtime {
     return p.join(dir.path, 'bin', 'wineboot');
   }
 
+  @override
+  RuntimePathResolver get pathResolver => WineAndProtonRuntimePathResolver();
+
   const WineRuntime._(super.identity, super.path);
 
   @override
@@ -181,13 +199,21 @@ class ProtonRuntime extends Runtime {
       return; // Database is already present and not older than 15 days
     }
 
-    print('Downloading UMU database for Proton runtimes...');
+    print('(Proton Runtime) Downloading UMU database for Proton runtimes...');
 
-    final response = await http.get(
-      Uri.parse('https://umu.openwinecomponents.org/umu_api.php'),
-    );
+    try {
+      const resultTimeout = Duration(minutes: 5);
+      final response = await http.get(
+        Uri.parse('https://umu.openwinecomponents.org/umu_api.php'),
+      ).timeout(resultTimeout, onTimeout: () {
+        throw TimeoutException('Failed to download UMU database for Proton runtimes: Request timed out.', resultTimeout);
+      });
 
-    await dbFile.writeAsBytes(response.bodyBytes);
+      await dbFile.writeAsBytes(response.bodyBytes, flush: true);
+    } catch (e) {
+      print('(Proton Runtime) Failed to download and/or save UMU database for Proton runtimes: $e');
+      await dbFile.delete();
+    }
   }
 
   static Future<ProtonRuntime?> fromDirectoryOrNull(Directory dir) async {
@@ -231,7 +257,7 @@ class ProtonRuntime extends Runtime {
   ) async {
     final umuDb = File(_getUmuDatabasePath());
     if (!await umuDb.exists()) {
-      print('UMU database file does not exist at ${_getUmuDatabasePath()}. Skipping UMU query.');
+      print('(Proton Runtime) UMU database file does not exist at ${_getUmuDatabasePath()}. Skipping UMU query.');
       return null;
     }
 
@@ -262,6 +288,9 @@ class ProtonRuntime extends Runtime {
     final finalMatch = matches.firstWhereOrNull((e) => e.store == 'none');
     return finalMatch;
   }
+
+  @override
+  RuntimePathResolver get pathResolver => WineAndProtonRuntimePathResolver();
 
   const ProtonRuntime._(super.identity, super.path);
 
@@ -323,5 +352,99 @@ class _ProtonRuntimeUmuDatabaseEntry {
   @override
   String toString() {
     return 'ProtonRuntimeUmuDatabaseEntry(title: $title, store: $store, id: $id)';
+  }
+}
+
+class WineAndProtonRuntimePathResolver extends RuntimePathResolver {
+  /// Converts a Windows path inside a Wine/Proton prefix to a Linux path.
+  ///
+  /// Examples:
+  ///   C:\Program Files\App\app.exe
+  ///     -> <prefix>/drive_c/Program Files/App/app.exe
+  ///
+  ///   Z:\home\me\Downloads\foo.exe
+  ///     -> /home/me/Downloads/foo.exe (if Z: symlink exists)
+  @override
+  String? toolPathToNative(
+    String toolPath,
+    PrefixIdentity prefixIdentity,
+  ) {
+    final match = RegExp(r'^([A-Za-z]):[\\/](.*)$').firstMatch(toolPath);
+
+    if (match == null) return null;
+
+    final drive = match.group(1)!.toLowerCase();
+    final remainder = match.group(2)!;
+
+    // Convert backslashes to Linux separators
+    final relative = remainder.replaceAll(r'\', '/');
+
+    if (drive == 'c') {
+      return p.normalize(
+        p.join(prefixIdentity.prefixPath, 'drive_c', relative),
+      );
+    }
+
+    // Other drives are symlinks under dosdevices.
+    final driveLink = Link(
+      p.join(prefixIdentity.prefixPath, 'dosdevices', '$drive:'),
+    );
+
+    if (!driveLink.existsSync()) {
+      return null;
+    }
+
+    final target = driveLink.targetSync();
+
+    return _expandWindowsVariables(
+      p.normalize(
+        p.join(target, relative),
+      ),
+    );
+  }
+
+  /// Resolves a relative path from a .lnk.
+  ///
+  /// [relativePath] might be:
+  ///     ..\App\app.exe
+  ///
+  /// [workingDirectory] is the Windows working directory from the shortcut.
+  /// [prefix] is the Wine/Proton prefix.
+  @override
+  String? toolPathResolveRelativeToNative(
+    String relativePath,
+    String workingDirectory,
+    PrefixIdentity prefixIdentity,
+  ) {
+    final linuxWorking =
+        toolPathToNative(workingDirectory, prefixIdentity);
+
+    if (linuxWorking == null) {
+      return null;
+    }
+
+    final relative =
+        _expandWindowsVariables(relativePath.replaceAll(r'\', '/'));
+
+    return p.normalize(
+      p.join(linuxWorking, relative),
+    );
+  }
+
+  // TODO: Detect actual username, maybe store in PrefixIdentity.
+  /// Expands windows path environment variables to regular path strings.
+  String _expandWindowsVariables(
+    String path,
+    [String username = "steamuser"]
+  ) {
+    return path
+        .replaceAll('%ProgramFiles%', r'C:\Program Files')
+        .replaceAll('%ProgramFiles(x86)%', r'C:\Program Files (x86)')
+        .replaceAll('%SystemRoot%', r'C:\Windows')
+        .replaceAll('%USERPROFILE%', 'C:\\users\\$username')
+        .replaceAll('%APPDATA%',
+            'C:\\users\\$username\\AppData\\Roaming')
+        .replaceAll('%LOCALAPPDATA%',
+            'C:\\users\\$username\\AppData\\Local');
   }
 }
