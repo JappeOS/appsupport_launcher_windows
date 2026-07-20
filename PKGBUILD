@@ -1,12 +1,12 @@
 pkgname=appsupport_launcher_windows
 pkgver=1.0.5
 _tag=dev-v1.0.5
-pkgrel=1
+pkgrel=2
 pkgdesc="Windows application support for JappeOS."
 arch=('x86_64')
 url="https://github.com/JappeOS/$pkgname"
 license=('GPL-3.0')
-depends=('glibc' 'gtk3' 'zenity' 'perl-image-exiftool' 'desktop-file-utils')
+depends=('glibc' 'gtk3' 'zenity' 'perl-image-exiftool' 'desktop-file-utils' 'umu-launcher')
 makedepends=('git' 'clang' 'cmake' 'ninja' 'xdg-utils')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$_tag.tar.gz")
 sha256sums=('SKIP')
