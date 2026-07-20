@@ -30,6 +30,9 @@ const String appPublisherAndNameRegex = r'[^a-z0-9-_]';
 /// The directory where the runtimes are stored.
 final String runtimeDirectory = p.join(getAppDataDirectory(), 'runtimes');
 
+/// The directory where the runtimes are stored.
+final String runtimeSourcesFile = p.join(runtimeDirectory, 'sources_list.json');
+
 /// The directory where the application prefixes are stored.
 final String prefixDirectory = p.join(getAppDataDirectory(), 'prefixes');
 
