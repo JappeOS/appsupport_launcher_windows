@@ -1,7 +1,7 @@
 pkgname=appsupport_launcher_windows
-pkgver=1.0.6
-_tag=dev-v1.0.6
-pkgrel=2
+pkgver=1.0.7
+_tag=dev-v1.0.7
+pkgrel=1
 pkgdesc="Windows application support for JappeOS."
 arch=('x86_64')
 url="https://github.com/JappeOS/$pkgname"
