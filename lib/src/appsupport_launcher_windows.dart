@@ -58,7 +58,7 @@ sealed class AppSupportLauncherWindows {
   /// Launches a program by path. The program must exist and be a valid executable.
   /// Returns the exit code of this or the child app process.
   static Future<int> _launchApp(String appPath) async {
-    final waitForInitDialog = GuiDialog.progress("Launching Windows Application...");
+    final waitForInitDialog = GuiDialog.progress("Launching Windows application...");
     Lock? prefixLock;
 
     Future<void> cleanup() async {
@@ -87,6 +87,9 @@ sealed class AppSupportLauncherWindows {
       if (!await File(appPath).exists()) {
         throw Exception('Application executable not found at path: $appPath');
       }
+
+      // Update runtimes.
+      await RuntimeManager.updateRuntimesFromSources();
 
       // Return early if no runtimes are present on the system.
       final runtimes = await RuntimeManager.listRuntimes();
@@ -117,24 +120,27 @@ sealed class AppSupportLauncherWindows {
       if (prefixIdentity != null && runtime != null) {
         // Launch the app normally, and return the exit code future.
         // If launch does not succeed, enter the loop below to try alternatives.
+        print('Trying previously selected runtime $runtime...');
         final launched = await launch(runtime, appPath, prefixIdentity);
         if (launched.launchSuccess) {
           await cleanup();
           return (await launched.future)!;
         }
-        print('Failed to launch app with runtime ${runtime.identity.name} version ${runtime.identity.version}. Trying other compatible runtimes...');
+        print('Failed to launch app with previously selected runtime $runtime. Trying other compatible runtimes...');
       }
 
       // Try runtimes until the app launches with one of them.
       for (final runtime in runtimes) {
-        print('Trying runtime ${runtime.identity.name} version ${runtime.identity.version}...');
         try {
           // If an original prefix exists, only launch with runtimes that can
           // share the same prefix. We do NOT want to overwrite the user's prefix.
           if (!hasNoOriginalPrefix &&
               !runtime.isCompatibleWith(prefixIdentity.runtimeIdentity)) {
+            print('Skipping runtime $runtime for compatibility reasons.');
             continue;
           }
+
+          print('Trying runtime $runtime...');
 
           // If an original prefix did not exist, we will create a new one each
           // time, so we go through all installed runtimes to check which one
@@ -162,9 +168,9 @@ sealed class AppSupportLauncherWindows {
             await cleanup();
             return (await launched.future)!;
           }
-          print('Failed to launch app with runtime ${runtime.identity.name} version ${runtime.identity.version}: Launch command failed.');
+          print('Failed to launch app with runtime $runtime: Launch command failed.');
         } catch (e) {
-          print('Failed to launch app with runtime ${runtime.identity.name} version ${runtime.identity.version}: $e');
+          print('Failed to launch app with runtime $runtime: $e');
         }
       }
     } finally {
