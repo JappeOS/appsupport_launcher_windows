@@ -43,12 +43,12 @@ class PrefixIdentity {
   final ApplicationRuntimeIdentity runtimeIdentity;
   final Map<String, dynamic> _metadata;
 
-  const PrefixIdentity({
+  PrefixIdentity({
     required this.prefixPath,
     required this.identity,
     required this.runtimeIdentity,
     Map<String, dynamic> metadata = const {},
-  }) : _metadata = metadata;
+  }) : _metadata = Map<String, dynamic>.from(metadata);
 
   bool writeMetadata(String key, dynamic value) {
     if (_metadata[key] == value) {
