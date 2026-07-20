@@ -53,7 +53,7 @@ class ApplicationIdentity {
   final String publisher;
   final String legalTrademarks;
 
-  ApplicationIdentity({
+  const ApplicationIdentity({
     required this.name,
     required this.version,
     required this.publisher,
