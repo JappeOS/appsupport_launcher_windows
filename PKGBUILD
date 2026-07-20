@@ -10,6 +10,7 @@ depends=('glibc' 'gtk3' 'zenity' 'perl-image-exiftool' 'desktop-file-utils')
 makedepends=('git' 'clang' 'cmake' 'ninja' 'xdg-utils')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$_tag.tar.gz")
 sha256sums=('SKIP')
+options=('!strip')
 
 _desktopFile="appsupport-launcher-windows.desktop"
 
