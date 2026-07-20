@@ -16,6 +16,7 @@ _desktopFile="appsupport-launcher-windows.desktop"
 
 build() {
   cd "$srcdir/$pkgname-$_tag"
+  mkdir -p $_bundle
   dart compile exe bin/appsupport_launcher_windows.dart -o $_bundle/$pkgname
 }
 
