@@ -5,12 +5,29 @@ import 'package:path/path.dart' as p;
 import '../constants.dart';
 import 'application_runtime_identity.dart';
 import 'runtime.dart';
+import 'runtime_source_downloader.dart';
 
 sealed class RuntimeManager {
+  static final _runtimeSourcesFilePath = p.join(runtimeDirectory, "sources.list");
+  static final _latestUpdateFilePath = p.join(runtimeDirectory, "last_update");
+
   static final List<Runtime> _runtimes = [];
   static final Map<ApplicationRuntimeIdentity, Runtime> _runtimesByIdentity = {};
   static Future<void>? _findRuntimesFuture;
   static bool _runtimesInitializing = false;
+
+  /// Checks for updates for all runtimes defined in the sources file.
+  /// Reloads runtimes
+  static Future<void> updateRuntimesFromSources() async {
+    await _ensureRuntimes();
+    final res = await RuntimeSourceDownloader.download(
+      File(_runtimeSourcesFilePath),
+      File(_latestUpdateFilePath),
+    );
+    if (res) {
+      await _ensureRuntimes(true);
+    }
+  }
 
   /// Returns the runtime for the given application runtime identity,
   /// or null if it doesn't exist. Does not throw under regular circumstances.
@@ -18,25 +35,76 @@ sealed class RuntimeManager {
     if (runtimeIdentity == null) {
       return null;
     }
-    if (!_runtimesInitializing) {
-      _findRuntimesFuture = _findRuntimes();
-    }
-    await _findRuntimesFuture;
+    await _ensureRuntimes();
     return _runtimesByIdentity[runtimeIdentity];
   }
 
   /// Returns a list of found runtimes.
   static Future<List<Runtime>> listRuntimes() async {
-    if (!_runtimesInitializing) {
-      _findRuntimesFuture = _findRuntimes();
-    }
-    await _findRuntimesFuture;
+    await _ensureRuntimes();
     return _runtimes;
+  }
+
+  /// Reads the source hash for a given runtime. It is used to resolve where the
+  /// runtime came from.
+  static Future<int?> readSourceHash(Directory runtimePath) async {
+    final file = File(_getSourceHashFilePath(runtimePath));
+    if (!await file.exists()) {
+      return null;
+    }
+    return int.parse(await file.readAsString());
+  }
+
+  /// Writes a source hash for a given runtime. It is used to resolve where the
+  /// runtime came from.
+  static Future<void> writeSourceHash(Directory runtimePath, int? hash) async {
+    final file = File(_getSourceHashFilePath(runtimePath));
+    if (hash == null) {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      return;
+    }
+    await file.writeAsString(hash.toString());
+  }
+
+  /// Reads the remote hash for a given runtime. It is used to identify the
+  /// version of the runtime.
+  static Future<String?> readRemoteHash(Directory runtimePath) async {
+    final file = File(_getRemoteHashFilePath(runtimePath));
+    if (!await file.exists()) {
+      return null;
+    }
+    return file.readAsString();
+  }
+
+  /// Writes a remote hash for a given runtime. It is used to identify the
+  /// version of the runtime.
+  static Future<void> writeRemoteHash(Directory runtimePath, String? hash) async {
+    final file = File(_getRemoteHashFilePath(runtimePath));
+    if (hash == null) {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      return;
+    }
+    await file.writeAsString(hash.toString());
+  }
+
+  static String _getSourceHashFilePath(Directory runtimeDir) {
+    return p.join(runtimeDir.path, 'source.hash');
+  }
+
+  static String _getRemoteHashFilePath(Directory runtimeDir) {
+    return p.join(runtimeDir.path, 'remote.hash');
   }
 
   /// Finds all runtimes installed on this system.
   static Future<void> _findRuntimes() async {
     _runtimesInitializing = true;
+    _runtimes.clear();
+    _runtimesByIdentity.clear();
+    
     await Runtime.initializeRuntimes();
 
     void addRuntimeIfNotExists(Runtime? runtime) {
@@ -62,9 +130,27 @@ sealed class RuntimeManager {
       addRuntimeIfNotExists(await Runtime.fromDirectoryOrNull(dir));
     }
 
-    for (final runtime in _runtimes) {
-      print('Found runtime: ${runtime.identity.name} version ${runtime.identity.version} at ${runtime.path.path}');
+    if (_runtimes.isEmpty) {
+      print('No runtimes found!');
     }
+
+    print('Found ${_runtimes.length} runtimes:');
+    for (final runtime in _runtimes) {
+      print('\t${runtime.identity.name} version ${runtime.identity.version} at ${runtime.path.path}');
+    }
+  }
+
+  static Future<void> _ensureRuntimes([bool reload = false]) async {
+    if (reload) {
+      if (_findRuntimesFuture != null) {
+        await _findRuntimesFuture;
+      }
+      _runtimesInitializing = false;
+    }
+    if (!_runtimesInitializing) {
+      _findRuntimesFuture = _findRuntimes();
+    }
+    await _findRuntimesFuture;
   }
 
   /// Sorts a list of Proton compatibility tool directory names into this
