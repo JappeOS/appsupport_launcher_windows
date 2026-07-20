@@ -34,6 +34,7 @@ sealed class RuntimeManager {
     if (!await runtimeSourcesFile.exists()) {
       print('Runtime sources file does not exist. Creating a default one now.');
       try {
+        await runtimeSourcesFile.parent.create(recursive: true);
         await runtimeSourcesFile.writeAsString(
           _kRuntimeSourcesFileDefaultContent,
           flush: true,
@@ -87,6 +88,7 @@ sealed class RuntimeManager {
       }
       return;
     }
+    await file.parent.create(recursive: true);
     await file.writeAsString(hash.toString());
   }
 
@@ -110,6 +112,7 @@ sealed class RuntimeManager {
       }
       return;
     }
+    await file.parent.create(recursive: true);
     await file.writeAsString(hash.toString());
   }
 

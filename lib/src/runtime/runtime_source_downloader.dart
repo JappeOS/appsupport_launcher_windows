@@ -210,6 +210,7 @@ sealed class RuntimeSourceDownloader {
   }
 
   static Future<void> _writeLastUpdate(File file) async {
+    await file.parent.create(recursive: true);
     await file.writeAsString(DateTime.now().toString());
   }
 

@@ -214,6 +214,7 @@ class ProtonRuntime extends Runtime {
         throw TimeoutException('Failed to download UMU database for Proton runtimes: Request timed out.', resultTimeout);
       });
 
+      await dbFile.parent.create(recursive: true);
       await dbFile.writeAsBytes(response.bodyBytes, flush: true);
     } catch (e) {
       print('(Proton Runtime) Failed to download and/or save UMU database for Proton runtimes: $e');

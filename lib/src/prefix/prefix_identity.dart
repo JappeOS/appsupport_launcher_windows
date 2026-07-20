@@ -24,8 +24,11 @@ class PrefixIdentity {
   }
 
   /// Writes the prefix identity to the provided prefixPath.
-  static Future<void> write(File prefixPath, PrefixIdentity prefixIdentity) async {
+  static Future<void> write(File prefixPath, PrefixIdentity prefixIdentity, [bool createDir = true]) async {
     final jsonString = jsonEncode(encode(prefixIdentity));
+    if (createDir) {
+      await prefixPath.parent.create(recursive: true);
+    }
     await prefixPath.writeAsString(jsonString);
   }
 
