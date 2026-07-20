@@ -1,15 +1,20 @@
+import 'dart:convert';
 import 'dart:io';
 
 class GuiDialog {
   final GuiDialogType type;
   final String text;
+  final bool progressIntermediate;
+
   late Future<Process> _future;
 
   factory GuiDialog.progress(
-    String text,
-  ) => GuiDialog._(
+    String text, {
+    bool intermediate = true,
+  }) => GuiDialog._(
     type: GuiDialogType.progress,
     text: text,
+    progressIntermediate: intermediate,
   );
 
   factory GuiDialog.error(
@@ -19,13 +24,18 @@ class GuiDialog {
     text: error,
   );
 
-  GuiDialog._({required this.type, required this.text}) {
+  GuiDialog._({
+    required this.type,
+    required this.text,
+    this.progressIntermediate = true,
+  }) {
     List<String> args;
     switch (type) {
       case GuiDialogType.progress:
         args = [
           '--progress',
-          '--pulsate',
+          if (progressIntermediate)
+            '--pulsate',
           '--no-cancel',
           '--text=$text',
         ];
@@ -40,6 +50,22 @@ class GuiDialog {
     }
 
     _future = Process.start('zenity', args);
+  }
+
+  Future<void> updateProgress({int? percentage, String? message}) async {
+    assert(
+      percentage != null || message != null,
+      "Either percentage or message must contain a non-null value.",
+    );
+
+    final process = await _future;
+    process.stdin.encoding = utf8;
+    if (percentage != null) {
+      process.stdin.writeln(percentage.toString());
+    }
+    if (message != null) {
+      process.stdin.writeln("#$message");
+    }
   }
 
   Future<void> close([bool wait = false]) async {
