@@ -8,6 +8,16 @@ import 'runtime.dart';
 import 'runtime_source_downloader.dart';
 
 sealed class RuntimeManager {
+  static const String _kRuntimeSourcesFileDefaultContent =
+"""
+[
+  {
+    "type": "github",
+    "uri": "https://api.github.com/repos/GloriousEggroll/proton-ge-custom/releases/latest"
+  }
+]
+""";
+
   static final _runtimeSourcesFilePath = p.join(runtimeDirectory, "sources.list");
   static final _latestUpdateFilePath = p.join(runtimeDirectory, "last_update");
 
@@ -17,11 +27,23 @@ sealed class RuntimeManager {
   static bool _runtimesInitializing = false;
 
   /// Checks for updates for all runtimes defined in the sources file.
-  /// Reloads runtimes
+  /// Reloads runtimes after updating, if any runtimes were updated.
   static Future<void> updateRuntimesFromSources() async {
     await _ensureRuntimes();
+    final runtimeSourcesFile = File(_runtimeSourcesFilePath);
+    if (!await runtimeSourcesFile.exists()) {
+      print('Runtime sources file does not exist. Creating a default one now.');
+      try {
+        await runtimeSourcesFile.writeAsString(
+          _kRuntimeSourcesFileDefaultContent,
+          flush: true,
+        );
+      } catch (e) {
+        print('Failed to create default runtime sources file "${runtimeSourcesFile.path}": $e');
+      }
+    }
     final res = await RuntimeSourceDownloader.download(
-      File(_runtimeSourcesFilePath),
+      runtimeSourcesFile,
       File(_latestUpdateFilePath),
     );
     if (res) {
@@ -104,7 +126,7 @@ sealed class RuntimeManager {
     _runtimesInitializing = true;
     _runtimes.clear();
     _runtimesByIdentity.clear();
-    
+
     await Runtime.initializeRuntimes();
 
     void addRuntimeIfNotExists(Runtime? runtime) {

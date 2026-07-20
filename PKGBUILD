@@ -11,7 +11,7 @@ makedepends=('git' 'clang' 'cmake' 'ninja' 'xdg-utils')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$_tag.tar.gz")
 sha256sums=('SKIP')
 
-_bundle="$srcdir/$pkgname-$_tag/build/linux/x64/release/bundle"
+_bundle="$srcdir/$pkgname-$_tag/build/linux/$arch/release/bundle"
 _desktopFile="appsupport-launcher-windows.desktop"
 
 build() {
