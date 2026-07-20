@@ -1,6 +1,6 @@
 name: appsupport_launcher_windows
 description: "Adds Windows application support to JappeOS."
-version: 1.0.3
+version: 1.0.4
 # repository: https://github.com/my_org/my_repo
 
 environment:
