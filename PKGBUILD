@@ -36,6 +36,9 @@ package() {
   install -dm755 "$pkgdir/usr/bin"
   ln -s "/opt/$pkgname/$pkgname" "$pkgdir/usr/bin/$pkgname"
 
+  # Symlink because exiftool doesn't add itself to PATH
+  ln -s "/usr/bin/vendor_perl/exiftool" "$pkgdir/usr/bin/exiftool"
+
   # Install desktop entry
   install -Dm644 "$srcdir/$pkgname-$_tag/appsupport-launcher-windows.desktop" \
     "$pkgdir/usr/share/applications/appsupport-launcher-windows.desktop"
