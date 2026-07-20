@@ -11,16 +11,17 @@ makedepends=('git' 'clang' 'cmake' 'ninja' 'xdg-utils')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$_tag.tar.gz")
 sha256sums=('SKIP')
 
-_bundle="$srcdir/$pkgname-$_tag/build/linux/$arch/release/bundle"
 _desktopFile="appsupport-launcher-windows.desktop"
 
 build() {
+  _bundle="$srcdir/$pkgname-$_tag/build/linux/$arch/release/bundle"
   cd "$srcdir/$pkgname-$_tag"
-  mkdir -p $_bundle
-  dart compile exe bin/appsupport_launcher_windows.dart -o $_bundle/$pkgname
+  mkdir -p "$_bundle"
+  dart compile exe bin/appsupport_launcher_windows.dart -o "$_bundle/$pkgname"
 }
 
 package() {
+  _bundle="$srcdir/$pkgname-$_tag/build/linux/$arch/release/bundle"
   cd "$_bundle"
 
   # Install to /opt
