@@ -10,6 +10,9 @@ depends=('glibc' 'gtk3' 'zenity' 'perl-image-exiftool' 'desktop-file-utils')
 makedepends=('git' 'clang' 'cmake' 'ninja' 'xdg-utils')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/$_tag.tar.gz")
 sha256sums=('SKIP')
+
+# Stripping corrupts Dart AOT executables, causing them to start the Dart VM
+# instead of the embedded application.
 options=('!strip')
 
 _desktopFile="appsupport-launcher-windows.desktop"
