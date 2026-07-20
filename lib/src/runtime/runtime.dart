@@ -76,6 +76,11 @@ abstract class Runtime {
   /// Creates a prefix for this runtime. Make sure to use [isCompatibleWith]
   /// to check whether the same prefix can be used with a different runtime.
   Future<void> createPrefix(Directory prefixPath);
+
+  @override
+  String toString() {
+    return 'Runtime(identity: $identity, path: $path)';
+  }
 }
 
 abstract class RuntimePathResolver {
@@ -212,7 +217,9 @@ class ProtonRuntime extends Runtime {
       await dbFile.writeAsBytes(response.bodyBytes, flush: true);
     } catch (e) {
       print('(Proton Runtime) Failed to download and/or save UMU database for Proton runtimes: $e');
-      await dbFile.delete();
+      if (await dbFile.exists()) {
+        await dbFile.delete();
+      }
     }
   }
 
