@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:watcher/watcher.dart';
 
 import 'prefix/prefix_desktop_entry.dart';
 import 'prefix/prefix_identity.dart';
@@ -91,77 +92,7 @@ class ProcessRunner {
         stderr.toLowerCase().contains(toolFailMessage.toLowerCase());
   }
 
-  final bool launchSuccess;
-  final Process? _process;
-  final Runtime _runtime;
-  final PrefixIdentity _prefix;
-  late final Future<int?> _future;
-
-  Future<int?> get future => _future;
-
-  ProcessRunner._(
-    this.launchSuccess,
-    this._process,
-    this._runtime,
-    this._prefix,
-  ) : assert(!launchSuccess || _process == null) {
-    _future = _exitCode();
-  }
-
-  bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {
-    if (_process == null) {
-      return false;
-    }
-    return _process.kill(signal);
-  }
-
-  Future<int?> _exitCode() async {
-    final res = await _process?.exitCode;
-    await _handleCleanup();
-    return res;
-  }
-
-  Future<void> _handleCleanup() async {
-    if (await PrefixManager.getDesktopEntry(_prefix) != null) {
-      return;
-    }
-
-    final pathResolver = _runtime.pathResolver;
-    Map<File, File> executablesToSourceLnk = {};
-    await for (final ent in Directory(_prefix.prefixPath)
-        .list(recursive: true, followLinks: false)
-        .handleError((_) {})) {
-      if (ent is File && p.extension(ent.path) == '.lnk') {
-        try {
-          final data = await PrefixDesktopEntry.readSourceFile(
-            ent,
-            pathResolver,
-            _prefix,
-          );
-          executablesToSourceLnk[data.executableFile] = ent;
-        } catch (e) {
-          print("Desktop file generation: Skipping invalid lnk file: ${ent.path}");
-        }
-      }
-    }
-
-    if (executablesToSourceLnk.isEmpty) {
-      return;
-    }
-
-    final first = (await _rankExecutables(executablesToSourceLnk.keys.toList())).first;
-    try {
-      await PrefixManager.updateDesktopEntry(
-        _prefix,
-        executablesToSourceLnk[first]!,
-        pathResolver,
-      );
-    } on Exception catch (e) {
-      print("Desktop file generation: Failed to create desktop entry for prefix: $e");
-    }
-  }
-
-  Future<List<File>> _rankExecutables(List<File> files) async {
+  static Future<List<File>> _rankExecutables(List<File> files) async {
     const badWords = [
       'uninstall',
       'unins',
@@ -213,6 +144,199 @@ class ProcessRunner {
     scored.sort((a, b) => b.score.compareTo(a.score));
 
     return scored.map((e) => e.file).toList();
+  }
+
+  final bool launchSuccess;
+  final Process? _process;
+  final Runtime _runtime;
+  final PrefixIdentity _prefix;
+  late final Future<int?> _future;
+  late final Future<void> _initializationFuture;
+
+  DirectoryWatcher? _prefixWatcher;
+  StreamSubscription<WatchEvent>? _prefixSubscription;
+  Timer? _prefixWatcherDebounce;
+  Future<void>? _prefixWatcherFuture;
+  bool _prefixWatcherHandlerRunning = false;
+  bool _prefixWatcherHandlerAgain = false;
+
+  Future<int?> get future => _future;
+
+  ProcessRunner._(
+    this.launchSuccess,
+    this._process,
+    this._runtime,
+    this._prefix,
+  ) : assert(!launchSuccess || _process == null) {
+    _future = _exitCode();
+    _initializationFuture = _onInitialize().onError((e, st) {
+      print("Failed to initialize process runner (continuing anyway): $e");
+    });
+  }
+
+  bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {
+    if (_process == null) {
+      return false;
+    }
+    return _process.kill(signal);
+  }
+
+  Future<int?> _exitCode() async {
+    int? res;
+    try {
+      res = await _process?.exitCode;
+    } catch (e) {
+      print('Failed to get process exit code while disposing process runner (continuing anyway): $e');
+    }
+    await _initializationFuture;
+    try {
+      await _onDispose();
+    } catch (e) {
+      print("Failed to dispose process runner (continuing anyway): $e");
+    }
+    return res;
+  }
+
+  Future<void> _onInitialize() async {
+    await _startPrefixWatcher();
+  }
+
+  Future<void> _onPrefixWatcherReady() async {
+    if (await _createDesktopEntry(null)) {
+      await _stopPrefixWatcher();
+      return;
+    }
+  }
+
+  Future<void> _onPrefixWatcherEvent(WatchEvent event) async {
+    if (await _createDesktopEntry(event)) {
+      await _stopPrefixWatcher();
+      return;
+    }
+  }
+
+  Future<bool> _createDesktopEntry(WatchEvent? event) async {
+    if (await PrefixManager.getDesktopEntry(_prefix) != null) {
+      return true;
+    }
+
+    if (event != null && event.type != ChangeType.ADD) {
+      return false;
+    }
+
+    final pathResolver = _runtime.pathResolver;
+    Map<File, File> executablesToSourceLnk = {};
+    await for (final ent in Directory(_prefix.prefixPath)
+        .list(recursive: true, followLinks: false)
+        .handleError((_) {})) {
+      if (ent is File && p.extension(ent.path) == '.lnk') {
+        try {
+          final data = await PrefixDesktopEntry.readSourceFile(
+            ent,
+            pathResolver,
+            _prefix,
+          );
+          executablesToSourceLnk[data.executableFile] = ent;
+        } catch (e) {
+          print("Desktop file generation: Skipping invalid lnk file: ${ent.path}");
+        }
+      }
+    }
+
+    if (executablesToSourceLnk.isEmpty) {
+      return false;
+    }
+
+    final first = (await _rankExecutables(executablesToSourceLnk.keys.toList())).first;
+    try {
+      await PrefixManager.updateDesktopEntry(
+        _prefix,
+        executablesToSourceLnk[first]!,
+        pathResolver,
+      );
+    } on Exception catch (e) {
+      print("Desktop file generation: Failed to create desktop entry for prefix: $e");
+      return false;
+    }
+
+    return true;
+  }
+
+  Future<void> _onDispose() async {
+    await _stopPrefixWatcher();
+  }
+
+  Future<void> _startPrefixWatcher() async {
+    if (_prefixWatcher != null) {
+      return;
+    }
+
+    final directory = Directory(_prefix.prefixPath);
+    if (!await directory.exists()) {
+      throw StateError('Prefix directory does not exist at ${_prefix.prefixPath}.');
+    }
+
+    final watcher = DirectoryWatcher(directory.path);
+    _prefixWatcher = watcher;
+
+    _prefixSubscription = watcher.events.listen(
+      _schedulePrefixWatcherEvent,
+      onError: (Object error, StackTrace stackTrace) {
+        print('Prefix watcher subscription error: $error');
+      },
+    );
+
+    await watcher.ready;
+
+    try {
+      await _onPrefixWatcherReady();
+    } catch (e) {
+      print("Prefix watcher ready handler error: $e");
+    }
+  }
+
+  Future<void> _stopPrefixWatcher() async {
+    _prefixWatcherDebounce?.cancel();
+    _prefixWatcherDebounce = null;
+
+    await _prefixWatcherFuture;
+    _prefixWatcherFuture = null;
+
+    final subscription = _prefixSubscription;
+
+    _prefixSubscription = null;
+    _prefixWatcher = null;
+
+    await subscription?.cancel();
+  }
+
+  void _schedulePrefixWatcherEvent(WatchEvent event) {
+    _prefixWatcherDebounce?.cancel();
+    _prefixWatcherDebounce = Timer(
+      const Duration(milliseconds: 300),
+      () {
+        if (_prefixWatcherHandlerRunning) {
+          _prefixWatcherHandlerAgain = true;
+          return;
+        }
+
+        _prefixWatcherHandlerRunning = true;
+        _prefixWatcherFuture = Future(() async {
+          try {
+            do {
+              _prefixWatcherHandlerAgain = false;
+              try {
+                await _onPrefixWatcherEvent(event);
+              } catch (e) {
+                print("Prefix watcher event handler error: $e");
+              }
+            } while (_prefixWatcherHandlerAgain);
+          } finally {
+            _prefixWatcherHandlerRunning = false;
+          }
+        });
+      },
+    );
   }
 }
 
