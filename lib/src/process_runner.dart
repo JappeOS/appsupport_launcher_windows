@@ -3,11 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
-import 'package:watcher/watcher.dart';
 
 import 'prefix/prefix_desktop_entry.dart';
 import 'prefix/prefix_identity.dart';
 import 'prefix/prefix_manager.dart';
+import 'prefix/prefix_shortcut_watcher.dart';
 import 'runtime/runtime.dart';
 
 /// Handles the lifecycle of a running compatibility-tool hosted process.
@@ -153,12 +153,7 @@ class ProcessRunner {
   late final Future<int?> _future;
   late final Future<void> _initializationFuture;
 
-  DirectoryWatcher? _prefixWatcher;
-  StreamSubscription<WatchEvent>? _prefixSubscription;
-  Timer? _prefixWatcherDebounce;
-  Future<void>? _prefixWatcherFuture;
-  bool _prefixWatcherHandlerRunning = false;
-  bool _prefixWatcherHandlerAgain = false;
+  PrefixShortcutWatcher? _prefixWatcher;
 
   Future<int?> get future => _future;
 
@@ -167,7 +162,7 @@ class ProcessRunner {
     this._process,
     this._runtime,
     this._prefix,
-  ) : assert(!launchSuccess || _process == null) {
+  ) : assert(!launchSuccess || _process != null) {
     _future = _exitCode();
     _initializationFuture = _onInitialize().onError((e, st) {
       print("Failed to initialize process runner (continuing anyway): $e");
@@ -201,35 +196,19 @@ class ProcessRunner {
     await _startPrefixWatcher();
   }
 
-  Future<void> _onPrefixWatcherReady() async {
-    if (await _createDesktopEntry(null)) {
-      await _stopPrefixWatcher();
-      return;
-    }
-  }
-
-  Future<void> _onPrefixWatcherEvent(WatchEvent event) async {
-    if (await _createDesktopEntry(event)) {
-      await _stopPrefixWatcher();
-      return;
-    }
-  }
-
-  Future<bool> _createDesktopEntry(WatchEvent? event) async {
+  Future<bool> _createDesktopEntry() async {
     if (await PrefixManager.getDesktopEntry(_prefix) != null) {
       return true;
-    }
-
-    if (event != null && event.type != ChangeType.ADD) {
-      return false;
     }
 
     final pathResolver = _runtime.pathResolver;
     Map<File, File> executablesToSourceLnk = {};
     await for (final ent in Directory(_prefix.prefixPath)
         .list(recursive: true, followLinks: false)
-        .handleError((_) {})) {
-      if (ent is File && p.extension(ent.path) == '.lnk') {
+        .handleError((Object error) {
+          print('Desktop file generation: Failed to scan prefix: $error');
+        })) {
+      if (ent is File && p.extension(ent.path).toLowerCase() == '.lnk') {
         try {
           final data = await PrefixDesktopEntry.readSourceFile(
             ent,
@@ -238,7 +217,7 @@ class ProcessRunner {
           );
           executablesToSourceLnk[data.executableFile] = ent;
         } catch (e) {
-          print("Desktop file generation: Skipping invalid lnk file: ${ent.path}");
+          print("Desktop file generation: Skipping invalid lnk file: ${ent.path}: $e");
         }
       }
     }
@@ -276,67 +255,20 @@ class ProcessRunner {
       throw StateError('Prefix directory does not exist at ${_prefix.prefixPath}.');
     }
 
-    final watcher = DirectoryWatcher(directory.path);
-    _prefixWatcher = watcher;
-
-    _prefixSubscription = watcher.events.listen(
-      _schedulePrefixWatcherEvent,
-      onError: (Object error, StackTrace stackTrace) {
-        print('Prefix watcher subscription error: $error');
-      },
+    final watcher = PrefixShortcutWatcher(
+      directory.path,
+      scan: _createDesktopEntry,
+      onError: (error) => print('Prefix watcher error: $error'),
     );
-
-    await watcher.ready;
-
-    try {
-      await _onPrefixWatcherReady();
-    } catch (e) {
-      print("Prefix watcher ready handler error: $e");
-    }
+    _prefixWatcher = watcher;
+    await watcher.start();
+    print('Prefix watcher started for ${_prefix.prefixPath}.');
   }
 
   Future<void> _stopPrefixWatcher() async {
-    _prefixWatcherDebounce?.cancel();
-    _prefixWatcherDebounce = null;
-
-    await _prefixWatcherFuture;
-    _prefixWatcherFuture = null;
-
-    final subscription = _prefixSubscription;
-
-    _prefixSubscription = null;
+    await _prefixWatcher?.stop();
     _prefixWatcher = null;
-
-    await subscription?.cancel();
-  }
-
-  void _schedulePrefixWatcherEvent(WatchEvent event) {
-    _prefixWatcherDebounce?.cancel();
-    _prefixWatcherDebounce = Timer(
-      const Duration(milliseconds: 300),
-      () {
-        if (_prefixWatcherHandlerRunning) {
-          _prefixWatcherHandlerAgain = true;
-          return;
-        }
-
-        _prefixWatcherHandlerRunning = true;
-        _prefixWatcherFuture = Future(() async {
-          try {
-            do {
-              _prefixWatcherHandlerAgain = false;
-              try {
-                await _onPrefixWatcherEvent(event);
-              } catch (e) {
-                print("Prefix watcher event handler error: $e");
-              }
-            } while (_prefixWatcherHandlerAgain);
-          } finally {
-            _prefixWatcherHandlerRunning = false;
-          }
-        });
-      },
-    );
+    print('Prefix watcher stopped for ${_prefix.prefixPath}.');
   }
 }
 
