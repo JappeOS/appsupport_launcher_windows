@@ -337,6 +337,7 @@ class ProtonRuntime extends Runtime {
         'WINEPREFIX': prefixIdentity.prefixPath,
         'PROTONPATH': path.path,
         'GAMEID': ?umuDbEntryId,
+        'PROTON_ENABLE_WAYLAND': '1',
       },
       workingDirectory: File(appPath).parent.path,
     );
